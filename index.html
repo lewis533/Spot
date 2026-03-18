@@ -40,7 +40,7 @@ body{background:var(--bg);color:var(--text);font-family:'Plus Jakarta Sans',sans
 @keyframes ringPulse{0%,100%{transform:scale(1);opacity:1;}50%{transform:scale(1.08);opacity:0.6;}}
 .splash-wordmark{font-family:'Bebas Neue',sans-serif;font-size:3rem;letter-spacing:0.12em;background:linear-gradient(135deg,#fff 0%,var(--b) 50%,var(--p) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
 .splash-progress{width:140px;height:2px;background:rgba(255,255,255,0.08);border-radius:1px;margin-top:1.5rem;overflow:hidden;}
-.splash-bar{height:100%;background:linear-gradient(90deg,var(--b),var(--p));width:0%;animation:sLoad 2s ease forwards;}
+.splash-bar{height:100%;background:linear-gradient(90deg,var(--b),var(--p));width:0%;animation:sLoad 1.4s ease forwards;}
 @keyframes sLoad{0%{width:0%;}100%{width:100%;}}
 
 /* ── SCREENS ── */
@@ -439,7 +439,7 @@ function confetti(){
 async function init(){
   // Always hide splash after 2.2s no matter what
   const hideSplash = () => document.getElementById('splash').classList.add('out');
-  setTimeout(hideSplash, 2200);
+  setTimeout(hideSplash, 1500);
 
   try {
     const p=new URLSearchParams(window.location.search);
@@ -464,7 +464,7 @@ async function init(){
     const q=QUOTES[new Date().getDate()%QUOTES.length];
     document.getElementById('quoteStrip').innerHTML=`"${q.q}" <cite>— ${q.a}</cite>`;
     loadUser().then(()=>loadHome());
-  }, 2300);
+  }, 1600);
 }
 
 async function loadUser(){
@@ -753,8 +753,15 @@ window.closeWrapped=closeWrapped;
 window.nextSlide=nextSlide;
 window.prevSlide=prevSlide;
 
-if(window._fb)init();
-else window.addEventListener('fbReady',init);
+// Always init on page load — don't block on Firebase
+window.addEventListener('DOMContentLoaded', () => {
+  // Give Firebase module 500ms to load, then init regardless
+  if(window._fb) { init(); }
+  else {
+    const fbWait = setTimeout(() => init(), 500);
+    window.addEventListener('fbReady', () => { clearTimeout(fbWait); init(); }, {once:true});
+  }
+});
 </script>
 
 <script>
