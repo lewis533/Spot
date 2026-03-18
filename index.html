@@ -7,6 +7,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-title" content="Replay"/>
 <title>Replay</title>
+<link rel="manifest" href="manifest.json"/>
+<link rel="apple-touch-icon" href="icon-192.png"/>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
@@ -468,31 +470,70 @@ async function loadHome(){
     user?fbGet(`replay/${user.id}/${key}`):null
   ]);
 
-  let tt=tracks?.items?.[0];
-  let ta=artists?.items?.[0];
-  if(!tt&&recent?.items?.length)tt=recent.items[0].track;
+  // Deduplicated recently played tracks
+  const seen=new Set();
+  const recentTracks=(recent?.items||[]).map(i=>i.track).filter(t=>{if(seen.has(t.id))return false;seen.add(t.id);return true;}).slice(0,10);
 
-  if(tt||ta){
-    snap={date:key,track:tt?{name:tt.name,artist:tt.artists?.map(a=>a.name).join(', ')||'',art:tt.album?.images?.[1]?.url||tt.album?.images?.[0]?.url||'',url:tt.external_urls?.spotify||''}:null,artist:ta?{name:ta.name,art:ta.images?.[1]?.url||ta.images?.[0]?.url||'',url:ta.external_urls?.spotify||'',genres:ta.genres?.slice(0,3)||[]}:null,savedAt:Date.now()};
+  // Always use recent as fallback — no blank screens
+  const tt=tracks?.items?.[0]||recentTracks[0]||null;
+  const ta=artists?.items?.[0]||null;
+  const isRecentMode=!tracks?.items?.length;
+
+  if(tt){
+    snap={date:key,
+      track:{name:tt.name,artist:tt.artists?.map(a=>a.name).join(', ')||'',art:tt.album?.images?.[1]?.url||tt.album?.images?.[0]?.url||'',url:tt.external_urls?.spotify||''},
+      artist:ta?{name:ta.name,art:ta.images?.[1]?.url||ta.images?.[0]?.url||'',url:ta.external_urls?.spotify||'',genres:ta.genres?.slice(0,3)||[]}:null,
+      savedAt:Date.now()
+    };
     renderTodayCard(snap,!!existing);
-    // Ambient art on mesh
-    const art=snap.track?.art||snap.artist?.art||'';
-    if(art){const orb=document.querySelector('.mesh-orb');if(orb)orb.style.background=`rgba(79,127,255,0.12)`;}
   } else {
-    document.getElementById('todayCard').innerHTML='<div class="empty-st">Play some music on Spotify first.</div>';
+    document.getElementById('todayCard').innerHTML='<div class="empty-st" style="padding:2rem 1.25rem;text-align:center;color:var(--muted);font-size:0.85rem;line-height:1.8;">Open Spotify and play a song —<br/>it will appear here instantly.</div>';
   }
 
   const btn=document.getElementById('saveBtn');
-  btn.disabled=!!existing;btn.querySelector('span').textContent=existing?'✓ Already saved today':'Save Today\'s Snapshot';
+  btn.disabled=!!existing;
+  btn.querySelector('span').textContent=existing?'✓ Already saved today':'Save Today's Snapshot';
 
-  if(tracks?.items?.length){
+  // Tracks — top tracks preferred, recently played as fallback
+  const showTracks=tracks?.items?.length?tracks.items:recentTracks;
+  if(showTracks.length){
     document.getElementById('secTracks').style.display='block';
-    document.getElementById('tracksList').innerHTML=tracks.items.slice(0,5).map((t,i)=>`<div class="tr"><div class="tr-num">${i+1}</div><img class="tr-img" src="${t.album?.images?.[2]?.url||''}" alt=""/><div class="tr-meta"><div class="tr-name">${t.name}</div><div class="tr-sub">${t.artists?.map(a=>a.name).join(', ')||''}</div></div><a class="tr-btn" href="${t.external_urls?.spotify||'#'}" target="_blank"><svg viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>`).join('');
+    document.getElementById('tracksList').innerHTML=showTracks.slice(0,10).map((t,i)=>`
+      <div class="tr">
+        <div class="tr-num">${i+1}</div>
+        <img class="tr-img" src="${t.album?.images?.[2]?.url||t.album?.images?.[0]?.url||''}" alt=""/>
+        <div class="tr-meta">
+          <div class="tr-name">${t.name}</div>
+          <div class="tr-sub">${t.artists?.map(a=>a.name).join(', ')||''}${isRecentMode?' &middot; <span style="color:var(--b);font-size:0.62rem;font-weight:700;">RECENT</span>':''}</div>
+        </div>
+        <a class="tr-btn" href="${t.external_urls?.spotify||'#'}" target="_blank">
+          <svg viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        </a>
+      </div>`).join('');
   }
 
-  if(artists?.items?.length){
+  // Artists — top artists preferred, extract from recent as fallback
+  const showArtists=artists?.items?.length?artists.items:
+    [...new Map(recentTracks.flatMap(t=>t.artists||[]).map(a=>[a.name,{name:a.name,images:[],genres:[],external_urls:a.external_urls||{}}])).values()].slice(0,5);
+
+  if(showArtists.length){
     document.getElementById('secArtists').style.display='block';
-    document.getElementById('artistsList').innerHTML=artists.items.slice(0,5).map((a,i)=>`<div class="tr"><div class="tr-num">${i+1}</div><img class="tr-img r" src="${a.images?.[2]?.url||a.images?.[0]?.url||''}" alt=""/><div class="tr-meta"><div class="tr-name">${a.name}</div><div class="tr-sub">${a.genres?.slice(0,2).join(', ')||'artist'}</div></div><a class="tr-btn" href="${a.external_urls?.spotify||'#'}" target="_blank"><svg viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>`).join('');
+    document.getElementById('artistsList').innerHTML=showArtists.slice(0,5).map((a,i)=>`
+      <div class="tr">
+        <div class="tr-num">${i+1}</div>
+        <img class="tr-img r" src="${a.images?.[2]?.url||a.images?.[0]?.url||''}" alt="" style="${!a.images?.length?'background:linear-gradient(135deg,var(--b),var(--p));':''}"/>
+        <div class="tr-meta">
+          <div class="tr-name">${a.name}</div>
+          <div class="tr-sub">${a.genres?.slice(0,2).join(', ')||'artist'}</div>
+        </div>
+        <a class="tr-btn" href="${a.external_urls?.spotify||'#'}" target="_blank">
+          <svg viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        </a>
+      </div>`).join('');
+  }
+
+  // Personality only if we have real artist genre data
+  if(artists?.items?.length){
     const genres=artists.items.flatMap(a=>a.genres||[]);
     const[pn,pd,pi]=gPersona(genres);
     const bgs=[['#0d0033','#1a0044'],['#001a00','#002a00'],['#1a0000','#2e0000'],['#001a1a','#002e2e']];
@@ -510,7 +551,6 @@ async function loadHome(){
       for(let i=0;i<365;i++){const d=new Date(td);d.setDate(td.getDate()-i);const k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;if(allData[k])streak++;else break;}
       document.getElementById('metricRow').style.display='grid';
       setTimeout(()=>{countUp(document.getElementById('mDays'),days);countUp(document.getElementById('mStreak'),streak);countUp(document.getElementById('mMins'),days*32);},400);
-      // On this day
       const wk=new Date();wk.setDate(wk.getDate()-7);
       const wkKey=`${wk.getFullYear()}-${String(wk.getMonth()+1).padStart(2,'0')}-${String(wk.getDate()).padStart(2,'0')}`;
       const wkE=allData[wkKey];
@@ -520,7 +560,7 @@ async function loadHome(){
       }
     }
   }
-  sd={tracks:tracks?.items||[],artists:artists?.items||[]};
+  sd={tracks:showTracks,artists:showArtists};
 }
 
 function renderTodayCard(s,saved){
@@ -540,7 +580,13 @@ async function saveToday(){
 
 async function loadDiary(){
   const el=document.getElementById('diaryList');
-  if(!user){el.innerHTML='<div class="empty-st">Log in first.</div>';return;}
+  if(!user){
+    el.innerHTML='<div class="loading"><div class="spinner"></div></div>';
+    // Wait up to 3s for user to load
+    let waited=0;
+    while(!user&&waited<30){await new Promise(r=>setTimeout(r,100));waited++;}
+    if(!user){el.innerHTML='<div class="empty-st">Could not load user.<br/>Try refreshing.</div>';return;}
+  }
   el.innerHTML='<div class="loading"><div class="spinner"></div></div>';
   const data=await fbGet(`replay/${user.id}`);
   if(!data){el.innerHTML='<div class="empty-st">No entries yet.<br/>Save today\'s snapshot to start.</div>';return;}
@@ -696,6 +742,15 @@ window.prevSlide=prevSlide;
 if(window._fb)init();
 else window.addEventListener('fbReady',init);
 </script>
+
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(r => console.log('SW registered'))
+      .catch(e => console.log('SW error', e));
+  });
+}
+</script>
 </body>
 </html>
-
