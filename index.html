@@ -367,12 +367,21 @@ body{background:var(--bg);color:var(--text);font-family:'Plus Jakarta Sans',sans
 </div>
 <div class="toast" id="toast"></div>
 
-<script type="module">
-import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import{getDatabase,ref,set,get}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-const cfg={apiKey:"AIzaSyDpIPIum4KqI0beCHeDpr8ODXzbwASNFo4",authDomain:"lewspot-3d360.firebaseapp.com",databaseURL:"https://lewspot-3d360-default-rtdb.firebaseio.com",projectId:"lewspot-3d360",storageBucket:"lewspot-3d360.firebasestorage.app",messagingSenderId:"1039820020106",appId:"1:1039820020106:web:a37be7343e6e114f6bd073"};
-const fa=initializeApp(cfg,'rp3');const db=getDatabase(fa);
-window._fb={db,ref,set,get};window.dispatchEvent(new Event('fbReady'));
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script>
+try {
+  const cfg={apiKey:"AIzaSyDpIPIum4KqI0beCHeDpr8ODXzbwASNFo4",authDomain:"lewspot-3d360.firebaseapp.com",databaseURL:"https://lewspot-3d360-default-rtdb.firebaseio.com",projectId:"lewspot-3d360",storageBucket:"lewspot-3d360.firebasestorage.app",messagingSenderId:"1039820020106",appId:"1:1039820020106:web:a37be7343e6e114f6bd073"};
+  if(!firebase.apps.length) firebase.initializeApp(cfg);
+  const db = firebase.database();
+  window._fb = {
+    db,
+    ref: (db, path) => db.ref(path),
+    set: (ref, data) => ref.set(data),
+    get: (ref) => ref.once('value')
+  };
+  window.dispatchEvent(new Event('fbReady'));
+} catch(e){ console.warn('Firebase init error:', e); window.dispatchEvent(new Event('fbReady')); }
 </script>
 
 <script>
@@ -417,8 +426,15 @@ async function pkce(v){const d=new TextEncoder().encode(v),h=await crypto.subtle
 async function loginWithSpotify(){const v=rstr(64),ch=await pkce(v);localStorage.setItem('rp_pkce',v);window.location='https://accounts.spotify.com/authorize?'+new URLSearchParams({response_type:'code',client_id:CID,scope:SC,redirect_uri:RU,code_challenge_method:'S256',code_challenge:ch});}
 function logout(){localStorage.removeItem('rp_token');token=null;user=null;showScreen('loginScreen');}
 async function spt(u){const r=await fetch('https://api.spotify.com/v1'+u,{headers:{Authorization:'Bearer '+token}});if(!r.ok){if(r.status===401)logout();return null;}return r.json();}
-async function fbSet(p,d){const{db,ref,set}=window._fb;await set(ref(db,p),d);}
-async function fbGet(p){const{db,ref,get}=window._fb;const s=await get(ref(db,p));return s.exists()?s.val():null;}
+async function fbSet(p,d){
+  if(!window._fb)return;
+  await window._fb.db.ref(p).set(d);
+}
+async function fbGet(p){
+  if(!window._fb)return null;
+  const s=await window._fb.db.ref(p).once('value');
+  return s.exists()?s.val():null;
+}
 
 function todayKey(){const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 function greet(){const h=new Date().getHours();return h<5?'Late night 🌙':h<12?'Good morning ☀️':h<17?'Good afternoon 🌤':h<21?'Good evening 🌆':'Night owl 🌙';}
