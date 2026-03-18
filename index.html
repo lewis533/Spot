@@ -355,30 +355,21 @@ function fbGet(path) {
 // ── PKCE ──
 // ── AUTH ──
 function loginWithSpotify() {
-  var verifier = '';
-  var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  var array = new Uint8Array(64);
-  crypto.getRandomValues(array);
-  for(var i = 0; i < 64; i++) verifier += chars[array[i] % chars.length];
-  localStorage.setItem('rp_pkce', verifier);
-
-  var data = new TextEncoder().encode(verifier);
-  crypto.subtle.digest('SHA-256', data).then(function(hash){
-    var b64 = btoa(String.fromCharCode.apply(null, new Uint8Array(hash)))
-      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    var url = 'https://accounts.spotify.com/authorize' +
-      '?response_type=code' +
-      '&client_id=' + CID +
-      '&scope=' + encodeURIComponent(SC) +
-      '&redirect_uri=' + encodeURIComponent(RU) +
-      '&code_challenge_method=S256' +
-      '&code_challenge=' + b64;
-    window.location.href = url;
-  });
+  var state = Math.random().toString(36).substring(2);
+  localStorage.setItem('rp_state', state);
+  var url = 'https://accounts.spotify.com/authorize' +
+    '?response_type=token' +
+    '&client_id=' + CID +
+    '&scope=' + encodeURIComponent(SC) +
+    '&redirect_uri=' + encodeURIComponent(RU) +
+    '&state=' + state;
+  window.location.href = url;
 }
 
 function logout() {
   localStorage.removeItem('rp_token');
+  localStorage.removeItem('rp_expiry');
+  localStorage.removeItem('rp_refresh');
   token = null; user = null;
   showScreen('loginScreen');
 }
@@ -390,7 +381,17 @@ function spt(url) {
   return fetch('https://api.spotify.com/v1' + url, {headers:{Authorization:'Bearer '+token}})
     .then(function(r){ 
       console.log('spt response:', url, r.status);
-      if(!r.ok){ if(r.status===401){ console.log('401 - token expired'); logout(); } return null; } 
+      if(!r.ok){ 
+        console.log('API error:', r.status, url);
+        if(r.status===401){ 
+          // Token expired - clear and show login
+          localStorage.removeItem('rp_token');
+          localStorage.removeItem('rp_expiry');
+          token = null; user = null;
+          showScreen('loginScreen');
+        } 
+        return null; 
+      } 
       return r.json(); 
     })
     .catch(function(e){ console.log('spt error:', e); return null; });
@@ -459,37 +460,99 @@ function init() {
   // Always hide splash at 1.5s
   setTimeout(function(){ document.getElementById('splash').classList.add('out'); }, 1500);
 
-  var code = new URLSearchParams(window.location.search).get('code');
-  if(code) {
-    var v = localStorage.getItem('rp_pkce');
-    fetch('https://accounts.spotify.com/api/token', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-      body: 'grant_type=authorization_code&code=' + code + '&redirect_uri=' + encodeURIComponent(RU) + '&client_id=' + CID + '&code_verifier=' + v
-    })
-    .then(function(r){ return r.json(); })
-    .then(function(data){
-      if(data.access_token){ token = data.access_token; localStorage.setItem('rp_token', token); }
-      window.history.replaceState(null, '', window.location.pathname);
-      afterAuth();
-    })
-    .catch(function(){ afterAuth(); });
+  // Read token from URL hash (implicit grant)
+  var hash = window.location.hash.substring(1);
+  var hashParams = new URLSearchParams(hash);
+  var hashToken = hashParams.get('access_token');
+  if(hashToken) {
+    token = hashToken;
+    localStorage.setItem('rp_token', token);
+    localStorage.setItem('rp_expiry', Date.now() + 3500000);
+    window.history.replaceState(null, '', window.location.pathname);
   } else {
     token = localStorage.getItem('rp_token');
-    afterAuth();
+    // Check if token is expired
+    var expiry = localStorage.getItem('rp_expiry');
+    if(expiry && Date.now() > parseInt(expiry)) {
+      console.log('Token expired, clearing');
+      localStorage.removeItem('rp_token');
+      localStorage.removeItem('rp_expiry');
+      token = null;
+    }
   }
+  afterAuth();
+}
+
+function refreshToken(callback) {
+  var refresh = localStorage.getItem('rp_refresh');
+  if(!refresh){ callback(false); return; }
+  fetch('https://accounts.spotify.com/api/token', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'grant_type=refresh_token&refresh_token=' + refresh + '&client_id=' + CID
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    if(data.access_token){
+      token = data.access_token;
+      localStorage.setItem('rp_token', token);
+      localStorage.setItem('rp_expiry', Date.now() + 3500000);
+      if(data.refresh_token) localStorage.setItem('rp_refresh', data.refresh_token);
+      callback(true);
+    } else { callback(false); }
+  })
+  .catch(function(){ callback(false); });
+}
+
+function autoLogin() {
+  // Silently redirect to Spotify login - user won't need to tap button
+  var state = Math.random().toString(36).substring(2);
+  localStorage.setItem('rp_state', state);
+  var url = 'https://accounts.spotify.com/authorize' +
+    '?response_type=token' +
+    '&client_id=' + CID +
+    '&scope=' + encodeURIComponent(SC) +
+    '&redirect_uri=' + encodeURIComponent(RU) +
+    '&state=' + state +
+    '&show_dialog=false';
+  window.location.href = url;
 }
 
 function afterAuth() {
   setTimeout(function(){
-    if(!token){ showScreen('loginScreen'); return; }
+    if(!token){ 
+      // Try refresh token before giving up
+      var refresh = localStorage.getItem('rp_refresh');
+      if(refresh){
+        refreshToken(function(ok){
+          if(ok){ showScreen('homeScreen'); setupHome(); loadUser(); }
+          else { showScreen('loginScreen'); }
+        });
+      } else {
+        showScreen('loginScreen'); 
+      }
+      return; 
+    }
+    // Check if token expired
+    var expiry = localStorage.getItem('rp_expiry');
+    if(expiry && Date.now() > parseInt(expiry)){
+      refreshToken(function(ok){
+        if(ok){ showScreen('homeScreen'); setupHome(); loadUser(); }
+        else { localStorage.removeItem('rp_token'); showScreen('loginScreen'); }
+      });
+      return;
+    }
     showScreen('homeScreen');
-    document.getElementById('greet').textContent = greetStr();
-    document.getElementById('hDate').textContent = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
-    var q = QUOTES[new Date().getDate() % QUOTES.length];
-    document.getElementById('quote').innerHTML = '"'+q.q+'" <cite>— '+q.a+'</cite>';
+    setupHome();
     loadUser();
   }, 1600);
+}
+
+function setupHome(){
+  document.getElementById('greet').textContent = greetStr();
+  document.getElementById('hDate').textContent = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  var q = QUOTES[new Date().getDate() % QUOTES.length];
+  document.getElementById('quote').innerHTML = '"'+q.q+'" <cite>— '+q.a+'</cite>';
 }
 
 // ── LOAD USER ──
