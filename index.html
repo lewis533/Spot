@@ -352,51 +352,43 @@ function fbGet(path) {
   return db.ref(path).once('value').then(function(s){ return s.exists() ? s.val() : null; });
 }
 
-// ── PKCE ──
 // ── AUTH ──
-function doSpotifyLogin() {
-  var verifier = generateVerifier();
+function spotifyLogin(forceDialog) {
+  var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  var arr = new Uint8Array(64);
+  crypto.getRandomValues(arr);
+  var verifier = '';
+  for(var i=0;i<64;i++) verifier += chars[arr[i]%chars.length];
   localStorage.setItem('rp_pkce', verifier);
-  var data = new TextEncoder().encode(verifier);
-  crypto.subtle.digest('SHA-256', data).then(function(hash) {
+  var enc = new TextEncoder().encode(verifier);
+  crypto.subtle.digest('SHA-256', enc).then(function(hash){
     var bytes = new Uint8Array(hash);
-    var str = '';
-    for (var i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
-    var challenge = btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-    window.location.href = buildSpotifyURL(verifier, challenge);
+    var bin = '';
+    for(var i=0;i<bytes.length;i++) bin += String.fromCharCode(bytes[i]);
+    var challenge = btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+    window.location.href = 'https://accounts.spotify.com/authorize' +
+      '?response_type=code' +
+      '&client_id=' + CID +
+      '&scope=' + encodeURIComponent(SC) +
+      '&redirect_uri=' + encodeURIComponent(RU) +
+      '&code_challenge_method=S256' +
+      '&code_challenge=' + challenge +
+      '&show_dialog=' + (forceDialog ? 'true' : 'false');
   });
 }
 
-function loginWithSpotify() {
-  doSpotifyLogin();
-}
+function loginWithSpotify() { spotifyLogin(true); }
 
 function logout() {
-  localStorage.removeItem('rp_token');
-  localStorage.removeItem('rp_expiry');
-  localStorage.removeItem('rp_refresh');
-  localStorage.removeItem('rp_pkce');
+  localStorage.clear();
   token = null; user = null;
   showScreen('loginScreen');
 }
 
 function logoutAndSwitch() {
-  localStorage.removeItem('rp_token');
-  localStorage.removeItem('rp_expiry');
-  localStorage.removeItem('rp_refresh');
-  localStorage.removeItem('rp_pkce');
+  localStorage.clear();
   token = null; user = null;
-  // Force Spotify to show account picker
-  var verifier = generateVerifier();
-  localStorage.setItem('rp_pkce', verifier);
-  var data = new TextEncoder().encode(verifier);
-  crypto.subtle.digest('SHA-256', data).then(function(hash) {
-    var bytes = new Uint8Array(hash);
-    var str = '';
-    for (var i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
-    var challenge = btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-    window.location.href = buildSpotifyURL(verifier, challenge).replace('show_dialog=false','show_dialog=true');
-  });
+  spotifyLogin(true);
 }
 
 // ── SPOTIFY FETCH ──
@@ -482,97 +474,60 @@ function getPersona(genres) {
 
 // ── INIT ──
 function init() {
-  // Always hide splash at 1.5s
   setTimeout(function(){ document.getElementById('splash').classList.add('out'); }, 1500);
 
   var code = new URLSearchParams(window.location.search).get('code');
-  if (code) {
+  if(code) {
+    // Exchange code for token
     var verifier = localStorage.getItem('rp_pkce');
-    var body = 'grant_type=authorization_code' +
-      '&code=' + encodeURIComponent(code) +
-      '&redirect_uri=' + encodeURIComponent(RU) +
-      '&client_id=' + CID +
-      '&code_verifier=' + encodeURIComponent(verifier);
     fetch('https://accounts.spotify.com/api/token', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body
+      headers: {'Content-Type':'application/x-www-form-urlencoded'},
+      body: 'grant_type=authorization_code&code='+encodeURIComponent(code)+'&redirect_uri='+encodeURIComponent(RU)+'&client_id='+CID+'&code_verifier='+encodeURIComponent(verifier)
     })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data.access_token) {
+    .then(function(r){return r.json();})
+    .then(function(data){
+      if(data.access_token){
         token = data.access_token;
         localStorage.setItem('rp_token', token);
-        localStorage.setItem('rp_expiry', String(Date.now() + 3500000));
+        localStorage.setItem('rp_expiry', String(Date.now()+3500000));
       }
-      if (data.refresh_token) {
-        localStorage.setItem('rp_refresh', data.refresh_token);
-      }
-      window.history.replaceState(null, '', window.location.pathname);
+      if(data.refresh_token) localStorage.setItem('rp_refresh', data.refresh_token);
+      window.history.replaceState(null,'',window.location.pathname);
       afterAuth();
     })
-    .catch(function() { afterAuth(); });
+    .catch(function(){ afterAuth(); });
   } else {
     token = localStorage.getItem('rp_token');
-    var expiry = localStorage.getItem('rp_expiry');
-    if (expiry && Date.now() > parseInt(expiry)) {
-      localStorage.removeItem('rp_token');
-      localStorage.removeItem('rp_expiry');
-      token = null;
-    }
     afterAuth();
   }
 }
 
-function refreshToken(callback) {
+function refreshToken(cb) {
   var refresh = localStorage.getItem('rp_refresh');
-  if(!refresh){ callback(false); return; }
-  fetch('https://accounts.spotify.com/api/token', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-    body: 'grant_type=refresh_token&refresh_token=' + refresh + '&client_id=' + CID
+  if(!refresh){cb(false);return;}
+  fetch('https://accounts.spotify.com/api/token',{
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:'grant_type=refresh_token&refresh_token='+encodeURIComponent(refresh)+'&client_id='+CID
   })
-  .then(function(r){ return r.json(); })
+  .then(function(r){return r.json();})
   .then(function(data){
     if(data.access_token){
-      token = data.access_token;
-      localStorage.setItem('rp_token', token);
-      localStorage.setItem('rp_expiry', Date.now() + 3500000);
-      if(data.refresh_token) localStorage.setItem('rp_refresh', data.refresh_token);
-      callback(true);
-    } else { callback(false); }
+      token=data.access_token;
+      localStorage.setItem('rp_token',token);
+      localStorage.setItem('rp_expiry',String(Date.now()+3500000));
+      if(data.refresh_token) localStorage.setItem('rp_refresh',data.refresh_token);
+      cb(true);
+    } else cb(false);
   })
-  .catch(function(){ callback(false); });
-}
-
-function generateVerifier() {
-  var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  var arr = new Uint8Array(64);
-  crypto.getRandomValues(arr);
-  var result = '';
-  for (var i = 0; i < arr.length; i++) result += chars[arr[i] % chars.length];
-  return result;
-}
-
-function buildSpotifyURL(verifier, challenge) {
-  return 'https://accounts.spotify.com/authorize' +
-    '?response_type=code' +
-    '&client_id=' + CID +
-    '&scope=' + encodeURIComponent(SC) +
-    '&redirect_uri=' + encodeURIComponent(RU) +
-    '&code_challenge_method=S256' +
-    '&code_challenge=' + challenge +
-    '&show_dialog=false';
-}
-
-function autoLogin() {
-  doSpotifyLogin();
+  .catch(function(){cb(false);});
 }
 
 function afterAuth() {
   setTimeout(function(){
-    if(!token){ 
-      // Try refresh token before giving up
+    if(!token){
+      // No token — try refresh token first
       var refresh = localStorage.getItem('rp_refresh');
       if(refresh){
         refreshToken(function(ok){
@@ -580,19 +535,21 @@ function afterAuth() {
           else { showScreen('loginScreen'); }
         });
       } else {
-        showScreen('loginScreen'); 
+        showScreen('loginScreen');
       }
-      return; 
+      return;
     }
-    // Check if token expired
-    var expiry = localStorage.getItem('rp_expiry');
-    if(expiry && Date.now() > parseInt(expiry)){
+    // Have token — check expiry
+    var expiry = parseInt(localStorage.getItem('rp_expiry')||'0');
+    if(expiry && Date.now() > expiry){
+      // Token expired — try refresh
       refreshToken(function(ok){
         if(ok){ showScreen('homeScreen'); setupHome(); loadUser(); }
         else { localStorage.removeItem('rp_token'); showScreen('loginScreen'); }
       });
       return;
     }
+    // Token valid
     showScreen('homeScreen');
     setupHome();
     loadUser();
