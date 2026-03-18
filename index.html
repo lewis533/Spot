@@ -1,1 +1,897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Replay — Your Music Diary</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,400;1,700&family=Karla:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg: #0c0a08;
+  --surface: #141210;
+  --card: #1a1714;
+  --border: #2a2520;
+  --amber: #1e90ff;
+  --blue-dim: rgba(30,144,255,0.1);
+  --blue-glow: rgba(30,144,255,0.3);
+  --cream: #f0e6d3;
+  --muted: #7a6f62;
+  --red: #e05c4b;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background: var(--bg);
+  color: var(--cream);
+  font-family: 'Karla', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* grain overlay */
+body::after {
+  content:'';
+  position:fixed; inset:0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events:none; z-index:1000;
+}
+
+/* ── SCREENS ── */
+.screen { display:none; min-height:100vh; flex-direction:column; }
+.screen.active { display:flex; }
+
+/* ── LOGIN ── */
+#loginScreen {
+  align-items:center; justify-content:center;
+  padding:2rem;
+  background: radial-gradient(ellipse 70% 50% at 50% 100%, rgba(30,144,255,0.06) 0%, transparent 70%);
+}
+
+.login-box { text-align:center; max-width:320px; width:100%; animation: riseIn 0.8s cubic-bezier(.16,1,.3,1) both; }
+
+@keyframes riseIn { from{opacity:0;transform:translateY(30px);} to{opacity:1;transform:translateY(0);} }
+
+.app-eyebrow {
+  font-family:'Karla',sans-serif;
+  font-size:0.7rem;
+  font-weight:600;
+  letter-spacing:0.18em;
+  color:#1e90ff;
+  text-transform:uppercase;
+  margin-bottom:1rem;
+}
+
+h1.app-title {
+  font-family:'Playfair Display', serif;
+  font-size:3.5rem;
+  font-weight:900;
+  line-height:0.95;
+  letter-spacing:-0.02em;
+  margin-bottom:0.5rem;
+  color: var(--cream);
+}
+
+h1.app-title em {
+  font-style:italic;
+  color:#1e90ff;
+}
+
+.app-desc {
+  font-size:0.88rem;
+  color:var(--muted);
+  line-height:1.6;
+  margin-bottom:2.5rem;
+}
+
+.btn-login {
+  display:flex; align-items:center; justify-content:center; gap:0.6rem;
+  width:100%;
+  padding:0.95rem;
+  border-radius:4px;
+  background:#1e90ff;
+  color:#0c0a08;
+  border:none;
+  font-family:'Karla',sans-serif;
+  font-weight:700;
+  font-size:0.9rem;
+  letter-spacing:0.05em;
+  cursor:pointer;
+  transition:all 0.2s;
+}
+.btn-login:hover { background:#4dabff; transform:translateY(-1px); box-shadow:0 6px 24px var(--blue-glow); }
+.btn-login svg { width:18px; height:18px; fill:#0c0a08; }
+
+.login-fine { margin-top:1.25rem; font-size:0.75rem; color:var(--muted); line-height:1.6; }
+
+/* ── TOPBAR ── */
+.topbar {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:1.1rem 1.25rem;
+  border-bottom:1px solid var(--border);
+  background:rgba(12,10,8,0.92);
+  backdrop-filter:blur(16px);
+  position:sticky; top:0; z-index:100;
+}
+
+.topbar-left { display:flex; flex-direction:column; }
+
+.topbar-title {
+  font-family:'Playfair Display',serif;
+  font-weight:900;
+  font-size:1.15rem;
+  line-height:1;
+  letter-spacing:-0.01em;
+}
+
+.topbar-title em { font-style:italic; color:#1e90ff; }
+
+.topbar-date {
+  font-size:0.7rem;
+  color:var(--muted);
+  margin-top:0.15rem;
+  letter-spacing:0.05em;
+}
+
+.topbar-avatar {
+  width:32px; height:32px;
+  border-radius:50%;
+  object-fit:cover;
+  border:1.5px solid #1e90ff;
+  cursor:pointer;
+}
+
+.topbar-av-placeholder {
+  width:32px; height:32px;
+  border-radius:50%;
+  background:var(--blue-dim);
+  border:1.5px solid #1e90ff;
+  display:flex; align-items:center; justify-content:center;
+  font-size:0.75rem; font-weight:700; color:#1e90ff;
+  cursor:pointer;
+}
+
+/* ── NAV ── */
+.bottomnav {
+  position:fixed; bottom:0; left:0; right:0;
+  background:rgba(12,10,8,0.97);
+  backdrop-filter:blur(20px);
+  border-top:1px solid var(--border);
+  display:flex; z-index:100;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+.nav-btn {
+  flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:0.75rem 0; gap:0.25rem;
+  background:none; border:none; cursor:pointer;
+  color:var(--muted); font-size:0.62rem; font-weight:500;
+  font-family:'Karla',sans-serif;
+  transition:color 0.2s;
+}
+.nav-btn svg { width:19px; height:19px; stroke:currentColor; fill:none; stroke-width:1.7; }
+.nav-btn.active { color:#1e90ff; }
+
+/* ── CONTENT ── */
+.content { flex:1; padding:1.25rem; padding-bottom:80px; overflow-y:auto; }
+.tab { display:none; }
+.tab.active { display:block; animation:fadeUp 0.3s ease both; }
+@keyframes fadeUp { from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);} }
+
+/* ── TODAY CARD ── */
+.today-section { margin-bottom:1.75rem; }
+
+.section-eyebrow {
+  font-size:0.65rem;
+  font-weight:600;
+  letter-spacing:0.14em;
+  color:#1e90ff;
+  text-transform:uppercase;
+  margin-bottom:0.6rem;
+}
+
+.today-card {
+  background: linear-gradient(135deg, #1a1410, #141018);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:1.25rem;
+  position:relative;
+  overflow:hidden;
+}
+
+.today-card::before {
+  content:'';
+  position:absolute; top:0; left:0; right:0; height:2px;
+  background: linear-gradient(90deg, #1e90ff, transparent);
+}
+
+.today-saved-badge {
+  position:absolute; top:1rem; right:1rem;
+  background:var(--blue-dim);
+  border:1px solid rgba(30,144,255,0.3);
+  color:#1e90ff;
+  font-size:0.65rem; font-weight:600;
+  letter-spacing:0.08em;
+  padding:0.2rem 0.6rem;
+  border-radius:50px;
+  text-transform:uppercase;
+}
+
+.today-empty {
+  text-align:center;
+  padding:2rem 0;
+  color:var(--muted);
+  font-size:0.88rem;
+  font-style:italic;
+}
+
+.today-track { display:flex; align-items:center; gap:1rem; margin-bottom:1rem; }
+.today-art {
+  width:60px; height:60px;
+  border-radius:4px;
+  object-fit:cover;
+  background:var(--border);
+  flex-shrink:0;
+}
+.today-info { flex:1; min-width:0; }
+.today-label { font-size:0.65rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:0.25rem; }
+.today-name {
+  font-family:'Playfair Display',serif;
+  font-weight:700; font-size:1.05rem;
+  line-height:1.2;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.today-sub { font-size:0.8rem; color:var(--muted); margin-top:0.15rem; }
+
+.divider { height:1px; background:var(--border); margin:1rem 0; }
+
+.today-artist { display:flex; align-items:center; gap:0.75rem; }
+.today-artist-img {
+  width:40px; height:40px;
+  border-radius:50%;
+  object-fit:cover;
+  background:var(--border);
+  flex-shrink:0;
+}
+.today-artist-info { flex:1; min-width:0; }
+
+.btn-save {
+  width:100%;
+  margin-top:1.1rem;
+  padding:0.8rem;
+  background:#1e90ff;
+  color:#0c0a08;
+  border:none; border-radius:4px;
+  font-family:'Karla',sans-serif;
+  font-weight:700; font-size:0.88rem;
+  letter-spacing:0.04em;
+  cursor:pointer;
+  transition:all 0.2s;
+}
+.btn-save:hover { background:#4dabff; }
+.btn-save:disabled { background:var(--border); color:var(--muted); cursor:default; }
+
+/* ── DIARY / TIMELINE ── */
+.timeline { display:flex; flex-direction:column; gap:0; }
+
+.day-entry {
+  display:flex;
+  gap:1rem;
+  padding-bottom:1.5rem;
+  position:relative;
+}
+
+.day-entry::before {
+  content:'';
+  position:absolute;
+  left:11px; top:24px; bottom:0;
+  width:1px;
+  background:var(--border);
+}
+
+.day-entry:last-child::before { display:none; }
+
+.day-dot {
+  width:23px; height:23px;
+  border-radius:50%;
+  background:var(--card);
+  border:1.5px solid var(--border);
+  flex-shrink:0;
+  margin-top:0.1rem;
+  display:flex; align-items:center; justify-content:center;
+}
+
+.day-dot.today-dot {
+  background:#1e90ff;
+  border-color:#1e90ff;
+}
+
+.day-dot svg { width:10px; height:10px; fill:var(--bg); }
+
+.day-content { flex:1; min-width:0; }
+
+.day-date-label {
+  font-size:0.7rem;
+  color:var(--muted);
+  letter-spacing:0.06em;
+  margin-bottom:0.5rem;
+  text-transform:uppercase;
+}
+
+.day-card {
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:0.9rem;
+  display:flex;
+  gap:0.75rem;
+  align-items:center;
+}
+
+.day-art {
+  width:46px; height:46px;
+  border-radius:4px;
+  object-fit:cover;
+  background:var(--border);
+  flex-shrink:0;
+}
+
+.day-info { flex:1; min-width:0; }
+
+.day-track-name {
+  font-family:'Playfair Display',serif;
+  font-weight:700;
+  font-size:0.88rem;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+
+.day-artist-name {
+  font-size:0.75rem;
+  color:var(--muted);
+  margin-top:0.15rem;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+
+.day-open {
+  width:26px; height:26px;
+  background:var(--blue-dim);
+  border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  text-decoration:none;
+  flex-shrink:0;
+  transition:background 0.2s;
+}
+.day-open:hover { background:#1e90ff; }
+.day-open svg { width:11px; height:11px; stroke:#1e90ff; fill:none; stroke-width:2.5; }
+.day-open:hover svg { stroke:var(--bg); }
+
+/* ── RECAP ── */
+.recap-hero {
+  text-align:center;
+  padding:1.5rem 0 2rem;
+  border-bottom:1px solid var(--border);
+  margin-bottom:1.5rem;
+}
+
+.recap-days {
+  font-family:'Playfair Display',serif;
+  font-size:3rem;
+  font-weight:900;
+  color:#1e90ff;
+  line-height:1;
+}
+
+.recap-days-label {
+  font-size:0.75rem;
+  color:var(--muted);
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+  margin-top:0.25rem;
+}
+
+.recap-section { margin-bottom:1.75rem; }
+
+.recap-title {
+  font-family:'Playfair Display',serif;
+  font-size:1.1rem;
+  font-weight:700;
+  margin-bottom:1rem;
+  letter-spacing:-0.01em;
+}
+
+.recap-list { display:flex; flex-direction:column; gap:0.5rem; }
+
+.recap-item {
+  display:flex; align-items:center; gap:0.75rem;
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:0.75rem;
+}
+
+.recap-rank {
+  font-family:'Playfair Display',serif;
+  font-weight:700; font-size:1rem;
+  color:#1e90ff;
+  width:22px; text-align:center; flex-shrink:0;
+}
+
+.recap-img {
+  width:42px; height:42px;
+  border-radius:4px;
+  object-fit:cover;
+  background:var(--border);
+  flex-shrink:0;
+}
+
+.recap-img.round { border-radius:50%; }
+
+.recap-info { flex:1; min-width:0; }
+
+.recap-name {
+  font-weight:600; font-size:0.88rem;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+
+.recap-count {
+  font-size:0.72rem; color:var(--muted); margin-top:0.1rem;
+}
+
+.recap-bar-wrap {
+  height:3px; background:var(--border); border-radius:2px;
+  margin-top:0.4rem; overflow:hidden;
+}
+
+.recap-bar {
+  height:100%; background:#1e90ff; border-radius:2px;
+  transition:width 0.6s ease;
+}
+
+/* ── LOADING / EMPTY ── */
+.loading { display:flex; align-items:center; justify-content:center; padding:3rem; color:var(--muted); gap:0.6rem; font-size:0.85rem; }
+.spinner { width:16px; height:16px; border:2px solid var(--border); border-top-color:#1e90ff; border-radius:50%; animation:spin 0.7s linear infinite; }
+@keyframes spin { to{transform:rotate(360deg);} }
+.empty { text-align:center; padding:3rem 1rem; color:var(--muted); font-size:0.88rem; line-height:1.8; font-style:italic; }
+
+/* ── TOAST ── */
+.toast { position:fixed; bottom:90px; left:50%; transform:translateX(-50%) translateY(20px); background:#1e90ff; color:var(--bg); padding:0.55rem 1.1rem; border-radius:4px; font-size:0.8rem; font-weight:700; opacity:0; transition:all 0.3s; z-index:999; white-space:nowrap; pointer-events:none; letter-spacing:0.04em; }
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginScreen" class="screen active">
+  <div class="login-box">
+    <p class="app-eyebrow">Your music diary</p>
+    <h1 class="app-title">Re<em>play</em></h1>
+    <p class="app-desc">Every day, a snapshot of what you're listening to. Build your personal music history — one day at a time.</p>
+    <button class="btn-login" onclick="loginWithSpotify()">
+      <svg viewBox="0 0 24 24"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424a.623.623 0 01-.857.207c-2.348-1.435-5.304-1.76-8.785-.964a.623.623 0 01-.277-1.215c3.809-.87 7.077-.496 9.712 1.115a.623.623 0 01.207.857zm1.223-2.722a.78.78 0 01-1.072.257c-2.687-1.652-6.786-2.13-9.965-1.166a.78.78 0 01-.973-.519.781.781 0 01.519-.972c3.632-1.102 8.147-.568 11.234 1.328a.78.78 0 01.257 1.072zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71a.937.937 0 11-.543-1.794c3.532-1.072 9.404-.865 13.115 1.338a.937.937 0 01-.955 1.613z"/></svg>
+      Connect with Spotify
+    </button>
+    <p class="login-fine">Replay saves your daily top track and artist. Your data stays private.</p>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="appScreen" class="screen">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-title">Re<em>play</em></div>
+      <div class="topbar-date" id="topbarDate">—</div>
+    </div>
+    <div id="topAvatar" class="topbar-av-placeholder">R</div>
+  </div>
+
+  <div class="content">
+
+    <!-- TODAY TAB -->
+    <div id="tab-today" class="tab active">
+      <div class="today-section">
+        <div class="section-eyebrow">Today's Snapshot</div>
+        <div class="today-card" id="todayCard">
+          <div class="loading"><div class="spinner"></div> Loading your music...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DIARY TAB -->
+    <div id="tab-diary" class="tab">
+      <div class="section-eyebrow" style="margin-bottom:1rem;">Your Music Diary</div>
+      <div id="diaryTimeline" class="timeline">
+        <div class="loading"><div class="spinner"></div> Loading diary...</div>
+      </div>
+    </div>
+
+    <!-- RECAP TAB -->
+    <div id="tab-recap" class="tab">
+      <div class="recap-hero">
+        <div class="recap-days" id="recapDays">0</div>
+        <div class="recap-days-label">days recorded</div>
+      </div>
+      <div id="recapContent">
+        <div class="empty">No entries yet.<br/>Start logging today to build your recap.</div>
+      </div>
+    </div>
+
+  </div>
+
+  <nav class="bottomnav">
+    <button class="nav-btn active" id="nav-today" onclick="showTab('today')">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      Today
+    </button>
+    <button class="nav-btn" id="nav-diary" onclick="showTab('diary')">
+      <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+      Diary
+    </button>
+    <button class="nav-btn" id="nav-recap" onclick="showTab('recap')">
+      <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Recap
+    </button>
+  </nav>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Firebase -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, set, get, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDpIPIum4KqI0beCHeDpr8ODXzbwASNFo4",
+  authDomain: "lewspot-3d360.firebaseapp.com",
+  databaseURL: "https://lewspot-3d360-default-rtdb.firebaseio.com",
+  projectId: "lewspot-3d360",
+  storageBucket: "lewspot-3d360.firebasestorage.app",
+  messagingSenderId: "1039820020106",
+  appId: "1:1039820020106:web:a37be7343e6e114f6bd073"
+};
+
+const fbApp = initializeApp(firebaseConfig, 'replay');
+const db = getDatabase(fbApp);
+window._fb2 = { db, ref, set, get, onValue };
+window.dispatchEvent(new Event('fb2Ready'));
+</script>
+
+<script>
+const CLIENT_ID = '9bfa94ea5acd434e91bec6502a854a53';
+const REDIRECT_URI = 'https://lewspot.vercel.app'; // update to your actual deployed URL
+const SCOPES = ['user-read-private','user-read-email','user-top-read','user-read-currently-playing'].join(' ');
+
+let accessToken = null;
+let currentUser = null;
+let todayData = null;
+
+// ── PKCE ──
+function randStr(len) {
+  const c = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const a = new Uint8Array(len); crypto.getRandomValues(a);
+  return Array.from(a).map(x => c[x%c.length]).join('');
+}
+async function codeChallenge(v) {
+  const d = new TextEncoder().encode(v);
+  const h = await crypto.subtle.digest('SHA-256', d);
+  return btoa(String.fromCharCode(...new Uint8Array(h))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+
+async function loginWithSpotify() {
+  const v = randStr(64);
+  const ch = await codeChallenge(v);
+  localStorage.setItem('replay_pkce', v);
+  const p = new URLSearchParams({ response_type:'code', client_id:CLIENT_ID, scope:SCOPES, redirect_uri:REDIRECT_URI, code_challenge_method:'S256', code_challenge:ch });
+  window.location = 'https://accounts.spotify.com/authorize?' + p;
+}
+
+function logout() {
+  localStorage.removeItem('replay_token');
+  accessToken = null; currentUser = null;
+  showScreen('loginScreen');
+  window.history.replaceState(null,'',window.location.pathname);
+}
+
+// ── SPOTIFY ──
+async function spotifyFetch(url) {
+  const res = await fetch('https://api.spotify.com/v1' + url, { headers:{ Authorization:'Bearer '+accessToken } });
+  if (!res.ok) { if (res.status===401) logout(); return null; }
+  return res.json();
+}
+
+// ── FIREBASE ──
+async function fbSet(path, data) {
+  const { db, ref, set } = window._fb2;
+  await set(ref(db, path), data);
+}
+async function fbGet(path) {
+  const { db, ref, get } = window._fb2;
+  const snap = await get(ref(db, path));
+  return snap.exists() ? snap.val() : null;
+}
+
+// ── DATE HELPERS ──
+function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function formatDate(key) {
+  const [y,m,d] = key.split('-');
+  const date = new Date(y, m-1, d);
+  const opts = { weekday:'long', month:'long', day:'numeric' };
+  return date.toLocaleDateString('en-US', opts);
+}
+function formatShort(key) {
+  const [y,m,d] = key.split('-');
+  const date = new Date(y, m-1, d);
+  const today = new Date();
+  const yesterday = new Date(); yesterday.setDate(today.getDate()-1);
+  if (key === todayKey()) return 'Today';
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return date.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+}
+
+// ── INIT ──
+async function init() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  if (code) {
+    const v = localStorage.getItem('replay_pkce');
+    const res = await fetch('https://accounts.spotify.com/api/token', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type:'authorization_code', code, redirect_uri:REDIRECT_URI, client_id:CLIENT_ID, code_verifier:v })
+    });
+    const data = await res.json();
+    if (data.access_token) {
+      accessToken = data.access_token;
+      localStorage.setItem('replay_token', accessToken);
+    }
+    window.history.replaceState(null,'',window.location.pathname);
+  } else {
+    accessToken = localStorage.getItem('replay_token');
+  }
+  if (!accessToken) return;
+
+  showScreen('appScreen');
+  updateTopbarDate();
+  await loadUser();
+  await loadTodayTab();
+}
+
+function updateTopbarDate() {
+  const now = new Date();
+  document.getElementById('topbarDate').textContent = now.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+}
+
+async function loadUser() {
+  const data = await spotifyFetch('/me');
+  if (!data) return;
+  currentUser = data;
+  const name = data.display_name || data.id;
+  const avatar = data.images?.[0]?.url || '';
+  const topAv = document.getElementById('topAvatar');
+  if (avatar) {
+    const img = document.createElement('img');
+    img.id='topAvatar'; img.className='topbar-avatar'; img.src=avatar;
+    topAv.replaceWith(img);
+  } else {
+    topAv.textContent = name[0].toUpperCase();
+  }
+}
+
+async function loadTodayTab() {
+  const card = document.getElementById('todayCard');
+  const key = todayKey();
+
+  // Check if already saved today
+  const existing = currentUser ? await fbGet(`replay/${currentUser.id}/${key}`) : null;
+
+  // Fetch current top track + artist
+  const [tracks, artists, nowPlaying] = await Promise.all([
+    spotifyFetch('/me/top/tracks?limit=1&time_range=short_term'),
+    spotifyFetch('/me/top/artists?limit=1&time_range=short_term'),
+    spotifyFetch('/me/player/currently-playing')
+  ]);
+
+  const track = tracks?.items?.[0];
+  const artist = artists?.items?.[0];
+
+  if (!track && !artist) {
+    card.innerHTML = '<p class="today-empty">Not enough listening data yet.<br/>Listen on Spotify and check back.</p>';
+    return;
+  }
+
+  todayData = {
+    date: key,
+    track: track ? {
+      name: track.name,
+      artist: track.artists?.map(a=>a.name).join(', ') || '',
+      art: track.album?.images?.[1]?.url || '',
+      url: track.external_urls?.spotify || ''
+    } : null,
+    artist: artist ? {
+      name: artist.name,
+      art: artist.images?.[1]?.url || artist.images?.[0]?.url || '',
+      url: artist.external_urls?.spotify || '',
+      genres: artist.genres?.slice(0,2).join(', ') || ''
+    } : null,
+    nowPlaying: nowPlaying?.item ? {
+      name: nowPlaying.item.name,
+      artist: nowPlaying.item.artists?.map(a=>a.name).join(', ') || ''
+    } : null,
+    savedAt: Date.now()
+  };
+
+  const alreadySaved = !!existing;
+
+  card.innerHTML = `
+    ${alreadySaved ? '<div class="today-saved-badge">✓ Saved</div>' : ''}
+    ${track ? `
+    <div class="today-track">
+      <img class="today-art" src="${todayData.track.art}" alt=""/>
+      <div class="today-info">
+        <div class="today-label">Top Track · 4 Weeks</div>
+        <div class="today-name">${track.name}</div>
+        <div class="today-sub">${todayData.track.artist}</div>
+      </div>
+    </div>` : ''}
+    ${track && artist ? '<div class="divider"></div>' : ''}
+    ${artist ? `
+    <div class="today-artist">
+      <img class="today-artist-img" src="${todayData.artist.art}" alt=""/>
+      <div class="today-artist-info">
+        <div class="today-label">Top Artist · 4 Weeks</div>
+        <div class="today-name" style="font-size:0.95rem;">${artist.name}</div>
+        <div class="today-sub">${todayData.artist.genres}</div>
+      </div>
+    </div>` : ''}
+    ${todayData.nowPlaying ? `<div class="divider"></div><div style="font-size:0.78rem;color:var(--muted);">🎵 Currently playing: <span style="color:var(--cream)">${todayData.nowPlaying.name}</span></div>` : ''}
+    <button class="btn-save" id="saveBtn" ${alreadySaved?'disabled':''} onclick="saveToday()">
+      ${alreadySaved ? '✓ Today already saved' : 'Save Today\'s Snapshot'}
+    </button>
+  `;
+}
+
+async function saveToday() {
+  if (!currentUser || !todayData) return;
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  await fbSet(`replay/${currentUser.id}/${todayData.date}`, todayData);
+  btn.textContent = '✓ Saved!';
+  // Add saved badge
+  const card = document.getElementById('todayCard');
+  if (!card.querySelector('.today-saved-badge')) {
+    const badge = document.createElement('div');
+    badge.className = 'today-saved-badge'; badge.textContent = '✓ Saved';
+    card.insertBefore(badge, card.firstChild);
+  }
+  showToast('Snapshot saved to your diary!');
+}
+
+async function loadDiary() {
+  const el = document.getElementById('diaryTimeline');
+  if (!currentUser) { el.innerHTML = '<div class="empty">Log in to see your diary.</div>'; return; }
+
+  const data = await fbGet(`replay/${currentUser.id}`);
+  if (!data) { el.innerHTML = '<div class="empty">No entries yet.<br/>Save today\'s snapshot to start your diary.</div>'; return; }
+
+  const entries = Object.values(data).sort((a,b) => b.date.localeCompare(a.date));
+  const today = todayKey();
+
+  el.innerHTML = entries.map((e, i) => `
+    <div class="day-entry">
+      <div class="day-dot ${e.date===today?'today-dot':''}">
+        ${e.date===today ? '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="4"/></svg>' : ''}
+      </div>
+      <div class="day-content">
+        <div class="day-date-label">${formatShort(e.date)} · ${e.date}</div>
+        ${e.track ? `
+        <div class="day-card">
+          <img class="day-art" src="${e.track.art}" alt=""/>
+          <div class="day-info">
+            <div class="day-track-name">${e.track.name}</div>
+            <div class="day-artist-name">${e.track.artist}${e.artist?' · '+e.artist.name:''}</div>
+          </div>
+          <a class="day-open" href="${e.track.url}" target="_blank">
+            <svg viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </a>
+        </div>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+async function loadRecap() {
+  const el = document.getElementById('recapContent');
+  if (!currentUser) { el.innerHTML = '<div class="empty">Log in to see your recap.</div>'; return; }
+
+  const data = await fbGet(`replay/${currentUser.id}`);
+  if (!data) { el.innerHTML = '<div class="empty">No entries yet.<br/>Start logging to build your recap.</div>'; return; }
+
+  const entries = Object.values(data);
+  document.getElementById('recapDays').textContent = entries.length;
+
+  // Count track occurrences
+  const trackCount = {}, artistCount = {};
+  entries.forEach(e => {
+    if (e.track) {
+      const k = e.track.name;
+      trackCount[k] = trackCount[k] || { ...e.track, count:0 };
+      trackCount[k].count++;
+    }
+    if (e.artist) {
+      const k = e.artist.name;
+      artistCount[k] = artistCount[k] || { ...e.artist, count:0 };
+      artistCount[k].count++;
+    }
+  });
+
+  const topTracks = Object.values(trackCount).sort((a,b)=>b.count-a.count).slice(0,5);
+  const topArtists = Object.values(artistCount).sort((a,b)=>b.count-a.count).slice(0,5);
+  const maxT = topTracks[0]?.count || 1;
+  const maxA = topArtists[0]?.count || 1;
+
+  el.innerHTML = `
+    <div class="recap-section">
+      <div class="recap-title">Most Played Tracks</div>
+      <div class="recap-list">
+        ${topTracks.map((t,i) => `
+        <div class="recap-item">
+          <div class="recap-rank">${i+1}</div>
+          <img class="recap-img" src="${t.art}" alt=""/>
+          <div class="recap-info">
+            <div class="recap-name">${t.name}</div>
+            <div class="recap-count">${t.artist} · appeared ${t.count} day${t.count>1?'s':''}</div>
+            <div class="recap-bar-wrap"><div class="recap-bar" style="width:${(t.count/maxT*100)}%"></div></div>
+          </div>
+        </div>`).join('')}
+      </div>
+    </div>
+    <div class="recap-section">
+      <div class="recap-title">Most Listened Artists</div>
+      <div class="recap-list">
+        ${topArtists.map((a,i) => `
+        <div class="recap-item">
+          <div class="recap-rank">${i+1}</div>
+          <img class="recap-img round" src="${a.art}" alt=""/>
+          <div class="recap-info">
+            <div class="recap-name">${a.name}</div>
+            <div class="recap-count">${a.genres||'artist'} · appeared ${a.count} day${a.count>1?'s':''}</div>
+            <div class="recap-bar-wrap"><div class="recap-bar" style="width:${(a.count/maxA*100)}%"></div></div>
+          </div>
+        </div>`).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// ── UI ──
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function showTab(tab) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(n=>n.classList.remove('active'));
+  document.getElementById('tab-'+tab).classList.add('active');
+  document.getElementById('nav-'+tab).classList.add('active');
+  if (tab==='diary') loadDiary();
+  if (tab==='recap') loadRecap();
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2500);
+}
+
+window.loginWithSpotify = loginWithSpotify;
+window.logout = logout;
+window.showTab = showTab;
+window.saveToday = saveToday;
+
+if (window._fb2) init();
+else window.addEventListener('fb2Ready', init);
+</script>
+</body>
+</html>
 
