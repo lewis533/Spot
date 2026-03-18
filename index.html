@@ -353,25 +353,27 @@ function fbGet(path) {
 }
 
 // ── PKCE ──
-function rstr(n) {
-  var c='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', a=new Uint8Array(n);
-  crypto.getRandomValues(a);
-  return Array.from(a).map(function(x){return c[x%c.length];}).join('');
-}
-function pkce(v) {
-  var d = new TextEncoder().encode(v);
-  return crypto.subtle.digest('SHA-256', d).then(function(h){
-    return btoa(String.fromCharCode.apply(null, new Uint8Array(h))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-  });
-}
-
 // ── AUTH ──
 function loginWithSpotify() {
-  var v = rstr(64);
-  pkce(v).then(function(ch){
-    localStorage.setItem('rp_pkce', v);
-    var p = new URLSearchParams({response_type:'code',client_id:CID,scope:SC,redirect_uri:RU,code_challenge_method:'S256',code_challenge:ch});
-    window.location = 'https://accounts.spotify.com/authorize?' + p.toString();
+  var verifier = '';
+  var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  var array = new Uint8Array(64);
+  crypto.getRandomValues(array);
+  for(var i = 0; i < 64; i++) verifier += chars[array[i] % chars.length];
+  localStorage.setItem('rp_pkce', verifier);
+
+  var data = new TextEncoder().encode(verifier);
+  crypto.subtle.digest('SHA-256', data).then(function(hash){
+    var b64 = btoa(String.fromCharCode.apply(null, new Uint8Array(hash)))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    var url = 'https://accounts.spotify.com/authorize' +
+      '?response_type=code' +
+      '&client_id=' + CID +
+      '&scope=' + encodeURIComponent(SC) +
+      '&redirect_uri=' + encodeURIComponent(RU) +
+      '&code_challenge_method=S256' +
+      '&code_challenge=' + b64;
+    window.location.href = url;
   });
 }
 
@@ -458,18 +460,17 @@ function init() {
   setTimeout(function(){ document.getElementById('splash').classList.add('out'); }, 1500);
 
   var code = new URLSearchParams(window.location.search).get('code');
-
   if(code) {
     var v = localStorage.getItem('rp_pkce');
     fetch('https://accounts.spotify.com/api/token', {
-      method:'POST',
-      headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body: new URLSearchParams({grant_type:'authorization_code',code:code,redirect_uri:RU,client_id:CID,code_verifier:v}).toString()
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'grant_type=authorization_code&code=' + code + '&redirect_uri=' + encodeURIComponent(RU) + '&client_id=' + CID + '&code_verifier=' + v
     })
     .then(function(r){ return r.json(); })
     .then(function(data){
-      if(data.access_token){ token=data.access_token; localStorage.setItem('rp_token',token); }
-      window.history.replaceState(null,'',window.location.pathname);
+      if(data.access_token){ token = data.access_token; localStorage.setItem('rp_token', token); }
+      window.history.replaceState(null, '', window.location.pathname);
       afterAuth();
     })
     .catch(function(){ afterAuth(); });
