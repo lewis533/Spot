@@ -437,20 +437,34 @@ function confetti(){
 }
 
 async function init(){
-  setTimeout(()=>document.getElementById('splash').classList.add('out'),2200);
-  const p=new URLSearchParams(window.location.search);
-  const code=p.get('code');
-  if(code){const v=localStorage.getItem('rp_pkce');const r=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'authorization_code',code,redirect_uri:RU,client_id:CID,code_verifier:v})});const data=await r.json();if(data.access_token){token=data.access_token;localStorage.setItem('rp_token',token);}window.history.replaceState(null,'',window.location.pathname);}
-  else token=localStorage.getItem('rp_token');
-  if(!token){setTimeout(()=>showScreen('loginScreen'),2200);return;}
-  setTimeout(()=>showScreen('homeScreen'),2200);
-  // Header
-  document.getElementById('greeting').textContent=greet();
-  document.getElementById('homeDate').textContent=new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
-  const q=QUOTES[new Date().getDate()%QUOTES.length];
-  document.getElementById('quoteStrip').innerHTML=`"${q.q}" <cite>— ${q.a}</cite>`;
-  await loadUser();
-  await loadHome();
+  // Always hide splash after 2.2s no matter what
+  const hideSplash = () => document.getElementById('splash').classList.add('out');
+  setTimeout(hideSplash, 2200);
+
+  try {
+    const p=new URLSearchParams(window.location.search);
+    const code=p.get('code');
+    if(code){
+      const v=localStorage.getItem('rp_pkce');
+      const r=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'authorization_code',code,redirect_uri:RU,client_id:CID,code_verifier:v})});
+      const data=await r.json();
+      if(data.access_token){token=data.access_token;localStorage.setItem('rp_token',token);}
+      window.history.replaceState(null,'',window.location.pathname);
+    } else {
+      token=localStorage.getItem('rp_token');
+    }
+  } catch(e){ console.error('Auth error',e); }
+
+  // Show correct screen after splash
+  setTimeout(()=>{
+    if(!token){ showScreen('loginScreen'); return; }
+    showScreen('homeScreen');
+    document.getElementById('greeting').textContent=greet();
+    document.getElementById('homeDate').textContent=new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+    const q=QUOTES[new Date().getDate()%QUOTES.length];
+    document.getElementById('quoteStrip').innerHTML=`"${q.q}" <cite>— ${q.a}</cite>`;
+    loadUser().then(()=>loadHome());
+  }, 2300);
 }
 
 async function loadUser(){
