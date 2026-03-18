@@ -383,9 +383,15 @@ function logout() {
 
 // ── SPOTIFY FETCH ──
 function spt(url) {
+  console.log('spt call:', url, '| token:', token ? token.substring(0,20)+'...' : 'NULL');
+  if(!token) return Promise.resolve(null);
   return fetch('https://api.spotify.com/v1' + url, {headers:{Authorization:'Bearer '+token}})
-    .then(function(r){ if(!r.ok){ if(r.status===401) logout(); return null; } return r.json(); })
-    .catch(function(){ return null; });
+    .then(function(r){ 
+      console.log('spt response:', url, r.status);
+      if(!r.ok){ if(r.status===401){ console.log('401 - token expired'); logout(); } return null; } 
+      return r.json(); 
+    })
+    .catch(function(e){ console.log('spt error:', e); return null; });
 }
 
 // ── HELPERS ──
@@ -487,8 +493,17 @@ function afterAuth() {
 
 // ── LOAD USER ──
 function loadUser() {
+  console.log('loadUser called, token:', token ? 'exists' : 'NULL');
   spt('/me').then(function(d){
-    if(!d) return;
+    console.log('spt /me result:', d ? 'got user: '+d.id : 'NULL - token may be expired');
+    if(!d) {
+      // Token expired - force logout and show login
+      console.log('No user data - clearing token');
+      localStorage.removeItem('rp_token');
+      token = null;
+      showScreen('loginScreen');
+      return;
+    }
     user = d;
     var name = d.display_name || d.id;
     var av = d.images && d.images[0] ? d.images[0].url : '';
@@ -502,12 +517,22 @@ function loadUser() {
 // ── LOAD HOME ──
 function loadHome() {
   var key = todayKey();
+  // Show timeout message if loading takes more than 6 seconds
+  var loadTimeout = setTimeout(function(){
+    var tc = document.getElementById('todayCard');
+    if(tc && tc.querySelector('.spinner')){
+      tc.innerHTML = '<div style="text-align:center;padding:2rem 1.25rem;"><div style="font-size:2.5rem;margin-bottom:0.75rem;">🎵</div><div style="font-weight:700;font-size:0.95rem;margin-bottom:0.5rem;color:#f0f0ff;">No music yet</div><div style="color:rgba(255,255,255,0.35);font-size:0.82rem;line-height:1.7;">Open Spotify and play some songs.<br/>Come back and refresh — your music<br/>will appear here.</div></div>';
+      document.getElementById('saveBtn').disabled = true;
+    }
+  }, 6000);
+
   Promise.all([
     spt('/me/top/tracks?limit=10&time_range=short_term'),
     spt('/me/top/artists?limit=10&time_range=short_term'),
     spt('/me/player/recently-played?limit=50'),
     user ? fbGet('replay/'+user.id+'/'+key) : Promise.resolve(null)
   ]).then(function(results){
+    clearTimeout(loadTimeout);
     var tracks=results[0], artists=results[1], recent=results[2], existing=results[3];
 
     // Deduplicated recent tracks
