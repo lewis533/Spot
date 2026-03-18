@@ -282,6 +282,24 @@ body{background:var(--bg);color:var(--text);font-family:'Plus Jakarta Sans',sans
 </head>
 <body>
 
+<!-- EMERGENCY FAILSAFE -->
+<script>
+// If splash is still showing after 3s, force hide it and show login
+window.addEventListener('load', function() {
+  setTimeout(function() {
+    var splash = document.getElementById('splash');
+    if(splash && !splash.classList.contains('out')) {
+      splash.style.display = 'none';
+      var login = document.getElementById('loginScreen');
+      var home = document.getElementById('homeScreen');
+      var tok = localStorage.getItem('rp_token');
+      if(tok && home) { home.style.display = 'flex'; }
+      else if(login) { login.style.display = 'flex'; }
+    }
+  }, 3000);
+});
+</script>
+
 <!-- MESH BG -->
 <div id="meshBg">
   <div class="mesh-orb" style="width:400px;height:400px;top:-100px;left:-100px;background:rgba(79,127,255,0.08);animation-duration:20s;"></div>
@@ -769,15 +787,8 @@ window.closeWrapped=closeWrapped;
 window.nextSlide=nextSlide;
 window.prevSlide=prevSlide;
 
-// Always init on page load — don't block on Firebase
-window.addEventListener('DOMContentLoaded', () => {
-  // Give Firebase module 500ms to load, then init regardless
-  if(window._fb) { init(); }
-  else {
-    const fbWait = setTimeout(() => init(), 500);
-    window.addEventListener('fbReady', () => { clearTimeout(fbWait); init(); }, {once:true});
-  }
-});
+// Init immediately — never wait for anything
+setTimeout(init, 100);
 </script>
 
 <script>
