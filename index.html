@@ -354,24 +354,49 @@ function fbGet(path) {
 
 // ── PKCE ──
 // ── AUTH ──
+function doSpotifyLogin() {
+  var verifier = generateVerifier();
+  localStorage.setItem('rp_pkce', verifier);
+  var data = new TextEncoder().encode(verifier);
+  crypto.subtle.digest('SHA-256', data).then(function(hash) {
+    var bytes = new Uint8Array(hash);
+    var str = '';
+    for (var i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
+    var challenge = btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    window.location.href = buildSpotifyURL(verifier, challenge);
+  });
+}
+
 function loginWithSpotify() {
-  var state = Math.random().toString(36).substring(2);
-  localStorage.setItem('rp_state', state);
-  var url = 'https://accounts.spotify.com/authorize' +
-    '?response_type=token' +
-    '&client_id=' + CID +
-    '&scope=' + encodeURIComponent(SC) +
-    '&redirect_uri=' + encodeURIComponent(RU) +
-    '&state=' + state;
-  window.location.href = url;
+  doSpotifyLogin();
 }
 
 function logout() {
   localStorage.removeItem('rp_token');
   localStorage.removeItem('rp_expiry');
   localStorage.removeItem('rp_refresh');
+  localStorage.removeItem('rp_pkce');
   token = null; user = null;
   showScreen('loginScreen');
+}
+
+function logoutAndSwitch() {
+  localStorage.removeItem('rp_token');
+  localStorage.removeItem('rp_expiry');
+  localStorage.removeItem('rp_refresh');
+  localStorage.removeItem('rp_pkce');
+  token = null; user = null;
+  // Force Spotify to show account picker
+  var verifier = generateVerifier();
+  localStorage.setItem('rp_pkce', verifier);
+  var data = new TextEncoder().encode(verifier);
+  crypto.subtle.digest('SHA-256', data).then(function(hash) {
+    var bytes = new Uint8Array(hash);
+    var str = '';
+    for (var i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
+    var challenge = btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    window.location.href = buildSpotifyURL(verifier, challenge).replace('show_dialog=false','show_dialog=true');
+  });
 }
 
 // ── SPOTIFY FETCH ──
@@ -460,27 +485,43 @@ function init() {
   // Always hide splash at 1.5s
   setTimeout(function(){ document.getElementById('splash').classList.add('out'); }, 1500);
 
-  // Read token from URL hash (implicit grant)
-  var hash = window.location.hash.substring(1);
-  var hashParams = new URLSearchParams(hash);
-  var hashToken = hashParams.get('access_token');
-  if(hashToken) {
-    token = hashToken;
-    localStorage.setItem('rp_token', token);
-    localStorage.setItem('rp_expiry', Date.now() + 3500000);
-    window.history.replaceState(null, '', window.location.pathname);
+  var code = new URLSearchParams(window.location.search).get('code');
+  if (code) {
+    var verifier = localStorage.getItem('rp_pkce');
+    var body = 'grant_type=authorization_code' +
+      '&code=' + encodeURIComponent(code) +
+      '&redirect_uri=' + encodeURIComponent(RU) +
+      '&client_id=' + CID +
+      '&code_verifier=' + encodeURIComponent(verifier);
+    fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.access_token) {
+        token = data.access_token;
+        localStorage.setItem('rp_token', token);
+        localStorage.setItem('rp_expiry', String(Date.now() + 3500000));
+      }
+      if (data.refresh_token) {
+        localStorage.setItem('rp_refresh', data.refresh_token);
+      }
+      window.history.replaceState(null, '', window.location.pathname);
+      afterAuth();
+    })
+    .catch(function() { afterAuth(); });
   } else {
     token = localStorage.getItem('rp_token');
-    // Check if token is expired
     var expiry = localStorage.getItem('rp_expiry');
-    if(expiry && Date.now() > parseInt(expiry)) {
-      console.log('Token expired, clearing');
+    if (expiry && Date.now() > parseInt(expiry)) {
       localStorage.removeItem('rp_token');
       localStorage.removeItem('rp_expiry');
       token = null;
     }
+    afterAuth();
   }
-  afterAuth();
 }
 
 function refreshToken(callback) {
@@ -504,18 +545,28 @@ function refreshToken(callback) {
   .catch(function(){ callback(false); });
 }
 
-function autoLogin() {
-  // Silently redirect to Spotify login - user won't need to tap button
-  var state = Math.random().toString(36).substring(2);
-  localStorage.setItem('rp_state', state);
-  var url = 'https://accounts.spotify.com/authorize' +
-    '?response_type=token' +
+function generateVerifier() {
+  var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  var arr = new Uint8Array(64);
+  crypto.getRandomValues(arr);
+  var result = '';
+  for (var i = 0; i < arr.length; i++) result += chars[arr[i] % chars.length];
+  return result;
+}
+
+function buildSpotifyURL(verifier, challenge) {
+  return 'https://accounts.spotify.com/authorize' +
+    '?response_type=code' +
     '&client_id=' + CID +
     '&scope=' + encodeURIComponent(SC) +
     '&redirect_uri=' + encodeURIComponent(RU) +
-    '&state=' + state +
+    '&code_challenge_method=S256' +
+    '&code_challenge=' + challenge +
     '&show_dialog=false';
-  window.location.href = url;
+}
+
+function autoLogin() {
+  doSpotifyLogin();
 }
 
 function afterAuth() {
@@ -572,8 +623,16 @@ function loadUser() {
     var name = d.display_name || d.id;
     var av = d.images && d.images[0] ? d.images[0].url : '';
     var el = document.getElementById('av');
-    if(av){ var img=document.createElement('img'); img.className='tb-av'; img.src=av; img.id='av'; el.replaceWith(img); }
-    else { el.textContent = name[0].toUpperCase(); }
+    if(av){ 
+      var img=document.createElement('img'); 
+      img.className='tb-av'; img.src=av; img.id='av'; 
+      img.title='Tap to switch account';
+      img.addEventListener('click', function(){ if(confirm('Switch Spotify account?')) logoutAndSwitch(); });
+      el.replaceWith(img); 
+    } else { 
+      el.textContent = name[0].toUpperCase(); 
+      el.addEventListener('click', function(){ if(confirm('Switch Spotify account?')) logoutAndSwitch(); });
+    }
     loadHome();
   });
 }
